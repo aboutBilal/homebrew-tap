@@ -1,0 +1,103 @@
+name: update
+
+# Once a day: if Spillkit has a newer release, verify it and move the formula to it.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: new Spillkit release to formula
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write # push the updated formula
+      actions: write # start the macOS and Linux tests for it
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      HOMEBREW_NO_ANALYTICS: "1"
+    steps:
+      # Sets up Homebrew and checks this tap out into the workspace as aboutbilal/tap.
+      - uses: Homebrew/actions/setup-homebrew@eb02c69dbabdb66ff183c614f4ce7ab3c077592c # main, 2026-10-10
+
+      - name: Find the latest release
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$(gh release view --repo aboutBilal/spillkit --json tagName --jq .tagName)"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::unexpected release tag: $tag"; exit 1; }
+          current="$(sed -n -E 's|^  url "https://github.com/aboutBilal/spillkit/releases/download/(v[0-9.]+)/.*|\1|p' Formula/spillkit.rb)"
+          [[ -n "$current" ]] || { echo "::error::could not read the version from Formula/spillkit.rb"; exit 1; }
+          echo "latest release $tag, formula $current"
+          # Only ever move forward: a newer tag, never an older one.
+          if [[ "$tag" != "$current" && "$(printf '%s\n%s\n' "${current#v}" "${tag#v}" | sort -V | tail -n 1)" == "${tag#v}" ]]; then
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        if: steps.latest.outputs.tag != ''
+
+      - name: Verify the release archive (checksum and Sigstore signature)
+        if: steps.latest.outputs.tag != ''
+        env:
+          TAG: ${{ steps.latest.outputs.tag }}
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/release"; mkdir -p "$dir"; cd "$dir"
+          name="spillkit-$TAG.tar.gz"
+          for f in "$name" "$name.sha256" "$name.sigstore.json"; do
+            curl -fsSL -o "$f" "https://github.com/aboutBilal/spillkit/releases/download/$TAG/$f"
+          done
+          sha256sum -c "$name.sha256"
+          # Signed by Spillkit's own release workflow, for this exact tag.
+          cosign verify-blob "$name" --bundle "$name.sigstore.json" \
+            --certificate-identity "https://github.com/aboutBilal/spillkit/.github/workflows/release.yml@refs/tags/$TAG" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
+          sha="$(cut -d ' ' -f 1 "$name.sha256")"
+          [[ "$sha" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::not a SHA-256: $sha"; exit 1; }
+          echo "SHA256=$sha" >> "$GITHUB_ENV"
+
+      - name: Update, install and test the formula
+        if: steps.latest.outputs.tag != ''
+        env:
+          TAG: ${{ steps.latest.outputs.tag }}
+        run: |
+          set -euo pipefail
+          sed -i -E "s|releases/download/v[0-9.]+/spillkit-v[0-9.]+\.tar\.gz|releases/download/$TAG/spillkit-$TAG.tar.gz|; s|^  sha256 \"[0-9a-f]{64}\"|  sha256 \"$SHA256\"|" Formula/spillkit.rb
+          git diff --exit-code --quiet Formula/spillkit.rb && { echo "::error::the formula did not change"; exit 1; }
+          git diff
+          brew install aboutbilal/tap/spillkit
+          brew test aboutbilal/tap/spillkit
+          brew audit --strict --online aboutbilal/tap/spillkit
+          [[ "$(leak version)" == "spillkit ${TAG#v}" ]]
+
+      - name: Commit, push, and test on macOS and Linux
+        if: steps.latest.outputs.tag != ''
+        env:
+          TAG: ${{ steps.latest.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --quiet -m "spillkit ${TAG#v}" Formula/spillkit.rb
+          # The token goes to git in the environment, never in a command line.
+          export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
+          GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          export GIT_CONFIG_VALUE_0
+          git push origin HEAD:main
+          # A push made with this workflow's token starts no workflows, so start the tests here.
+          gh workflow run tests.yml --repo "$GITHUB_REPOSITORY" --ref main

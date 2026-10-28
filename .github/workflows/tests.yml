@@ -1,0 +1,45 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  formula:
+    name: brew install, test and audit (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      HOMEBREW_NO_ANALYTICS: "1"
+    steps:
+      # Sets up Homebrew and taps this repository as aboutbilal/tap.
+      - uses: Homebrew/actions/setup-homebrew@eb02c69dbabdb66ff183c614f4ce7ab3c077592c # main, 2026-10-10
+
+      - name: Install
+        run: brew install aboutbilal/tap/spillkit
+
+      - name: Test
+        run: brew test aboutbilal/tap/spillkit
+
+      - name: Audit
+        run: brew audit --strict --online aboutbilal/tap/spillkit
+
+      - name: Run it
+        run: |
+          leak version
+          leak doctor
