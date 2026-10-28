@@ -3,8 +3,8 @@
 class Spillkit < Formula
   desc "Find leaked secrets in Git history, plan their rotation and hunt down copies"
   homepage "https://aboutbilal.github.io/spillkit/"
-  url "https://github.com/aboutBilal/spillkit/releases/download/v3.6.0/spillkit-v3.6.0.tar.gz"
-  sha256 "4f64ae416b8958a9c6a1e59bd0c671bdaaadee903e8b78df07ab243f2c8cf569"
+  url "https://github.com/aboutBilal/spillkit/releases/download/v3.5.2/spillkit-v3.5.2.tar.gz"
+  sha256 "3d01ddd802ac08f73d7d0ba70e14f072efab08365efa0682693f5454b424fcc2"
   license "MIT"
 
   livecheck do
