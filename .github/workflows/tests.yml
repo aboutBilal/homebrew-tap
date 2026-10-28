@@ -28,7 +28,7 @@ jobs:
       HOMEBREW_NO_ANALYTICS: "1"
     steps:
       # Sets up Homebrew and taps this repository as aboutbilal/tap.
-      - uses: Homebrew/actions/setup-homebrew@eb02c69dbabdb66ff183c614f4ce7ab3c077592c # main, 2026-10-10
+      - uses: Homebrew/actions/setup-homebrew@d482da0e602890d3160aade42e72c8556103bf04 # main, 2026-10-10
 
       - name: Install
         run: brew install aboutbilal/tap/spillkit
