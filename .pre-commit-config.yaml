@@ -2,7 +2,7 @@
 # Install once per clone:   pipx install pre-commit && pre-commit install
 repos:
   - repo: https://github.com/aboutBilal/spillkit
-    rev: v3.6.1
+    rev: v3.7.0
     hooks:
       - id: forbid-secret-files # .env, keys and state files, whatever their content
       - id: leak-guard          # gitleaks on the staged changes
