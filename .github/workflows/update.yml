@@ -27,7 +27,7 @@ jobs:
       HOMEBREW_NO_ANALYTICS: "1"
     steps:
       # Sets up Homebrew and checks this tap out into the workspace as aboutbilal/tap.
-      - uses: Homebrew/actions/setup-homebrew@d482da0e602890d3160aade42e72c8556103bf04 # main, 2026-10-10
+      - uses: Homebrew/actions/setup-homebrew@d482da0e602890d3160aade42e72c8556103bf04 # 2026.10.26.1
 
       - name: Find the latest release
         id: latest
